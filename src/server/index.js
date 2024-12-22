@@ -6,6 +6,8 @@ import connectDB from '../config/db.js'
 import mongoose from 'mongoose'
 import http from 'http'
 import { setupWebSocket } from './websocket.js'
+import cors from 'cors'
+import corsOptions from './config/cors.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +15,13 @@ const __dirname = path.dirname(__filename)
 // 创建 Express 应用
 const app = express()
 const server = http.createServer(app)
+
+// 添加 CORS 中间件
+app.use(cors(corsOptions))
+
+// 添加 body 解析中间件
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
 // 设置 WebSocket
 const wss = setupWebSocket(server)
@@ -146,6 +155,7 @@ const PORT = process.env.PORT || 3001
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
   console.log(`WebSocket server is ready`)
+  console.log('CORS enabled for origins:', corsOptions.origin)
 })
 
 export default server

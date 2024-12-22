@@ -28,6 +28,9 @@
             class="mb-4"
             prepend-inner-icon="mdi-phone"
             density="comfortable"
+            :disabled="isLoading"
+            :error="!!loginError"
+            :error-messages="loginError"
           ></v-text-field>
 
           <!-- 验证码输入和获取按钮 -->
@@ -42,15 +45,17 @@
               prepend-inner-icon="mdi-shield-key"
               density="comfortable"
               hide-details
+              :disabled="isLoading"
             ></v-text-field>
             <v-btn
               :color="countdown > 0 ? 'grey' : 'primary'"
-              :disabled="!isPhoneValid || countdown > 0"
+              :disabled="!isPhoneValid || countdown > 0 || isLoading"
               @click="getVerificationCode"
               class="get-code-btn"
               height="44"
               min-width="120"
               variant="tonal"
+              :loading="isGettingCode"
             >
               {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
             </v-btn>
@@ -72,12 +77,22 @@
           登录
         </v-btn>
       </v-card-actions>
+
+      <!-- 错误提示 -->
+      <v-snackbar
+        v-model="showError"
+        color="error"
+        timeout="3000"
+        location="top"
+      >
+        {{ errorMessage }}
+      </v-snackbar>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
@@ -92,26 +107,47 @@ const phone = ref('')
 const verificationCode = ref('')
 const isValid = ref(false)
 const isLoading = ref(false)
+const isGettingCode = ref(false)
 const countdown = ref(0)
+const showError = ref(false)
+const errorMessage = ref('')
+const loginError = ref('')
 
-// 验证规则
+// 表单验证规则
 const rules = {
   required: v => !!v || '此项为必填',
   phone: v => /^1[3-9]\d{9}$/.test(v) || '请输入正确的手机号码',
-  verificationCode: v => /^\d{4}$/.test(v) || '请输入4位数验证码'
+  verificationCode: v => /^\d{4}$/.test(v) || '验证码为4位数字'
 }
 
+// 手机号码是否有效
+const isPhoneValid = computed(() => {
+  return rules.phone(phone.value) === true
+})
+
+// 对话框状态
 const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
 })
 
-const isPhoneValid = computed(() => {
-  return rules.phone(phone.value) === true
-})
-
 // 获取验证码
-const getVerificationCode = () => {
+const getVerificationCode = async () => {
+  if (!isPhoneValid.value || isGettingCode.value) return
+  
+  isGettingCode.value = true
+  try {
+    await userStore.sendVerificationCode(phone.value)
+    startCountdown()
+  } catch (error) {
+    showErrorMessage(error.message)
+  } finally {
+    isGettingCode.value = false
+  }
+}
+
+// 开始倒计时
+const startCountdown = () => {
   countdown.value = 60
   const timer = setInterval(() => {
     countdown.value--
@@ -124,43 +160,43 @@ const getVerificationCode = () => {
 // 处理登录
 const handleLogin = async () => {
   if (!form.value.validate()) return
-
+  
   isLoading.value = true
+  loginError.value = ''
+  
   try {
-    // 测试账号验证
-    const testAccounts = {
-      '13911160174': { code: '0000', role: 'admin' },
-      '13911111111': { code: '1111', role: 'member' },
-      '13911112222': { code: '2222', role: 'normal' }
-    }
-
-    const account = testAccounts[phone.value]
-    if (!account || account.code !== verificationCode.value) {
-      throw new Error('手机号或验证码错误')
-    }
-
-    // 登录成功，更新用户状态
-    await userStore.login({
-      phone: phone.value,
-      role: account.role
-    })
-
+    await userStore.login(phone.value, verificationCode.value)
     emit('login-success')
     closeDialog()
   } catch (error) {
-    console.error('登录失败:', error)
-    alert(error.message)
+    loginError.value = error.message
+    showErrorMessage(error.message)
   } finally {
     isLoading.value = false
   }
 }
 
+// 显示错误消息
+const showErrorMessage = (message) => {
+  errorMessage.value = message
+  showError.value = true
+}
+
+// 关闭对话框
 const closeDialog = () => {
-  dialog.value = false
   form.value?.reset()
   phone.value = ''
   verificationCode.value = ''
+  loginError.value = ''
+  dialog.value = false
 }
+
+// 监听错误状态
+watch(() => userStore.loginError, (error) => {
+  if (error) {
+    loginError.value = error
+  }
+})
 </script>
 
 <style scoped>
@@ -181,55 +217,25 @@ const closeDialog = () => {
   -webkit-text-fill-color: transparent;
 }
 
-.v-text-field :deep(.v-field__input) {
-  font-size: 14px;
-  padding: 8px 12px;
-}
-
-.v-text-field :deep(.v-field__outline__start) {
-  border-radius: 8px 0 0 8px;
-}
-
-.v-text-field :deep(.v-field__outline__end) {
-  border-radius: 0 8px 8px 0;
-}
-
 .verification-code-container {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-bottom: 16px;
 }
 
 .verification-input {
   flex: 1;
 }
 
-.verification-input :deep(.v-input__control) {
-  height: 44px;
-}
-
-.verification-input :deep(.v-field__input) {
-  min-height: 44px;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
 .get-code-btn {
-  margin-top: 0;
   white-space: nowrap;
 }
 
 .login-btn {
-  border-radius: 8px;
   text-transform: none;
   font-size: 16px;
   font-weight: 500;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.login-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 </style> 

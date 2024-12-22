@@ -1,5 +1,23 @@
 <template>
   <v-app>
+    <!-- 连接状态提示 -->
+    <v-system-bar
+      v-if="!wsConnected"
+      color="error"
+      height="30"
+    >
+      <v-icon icon="mdi-wifi-off" class="mr-2"></v-icon>
+      正在连接服务器...
+      <v-btn
+        variant="text"
+        size="small"
+        class="ml-2"
+        @click="reconnectWebSocket"
+      >
+        重试
+      </v-btn>
+    </v-system-bar>
+
     <Header />
     <v-main>
       <router-view></router-view>
@@ -8,17 +26,21 @@
 </template>
 
 <script setup>
-import { ref, provide, onMounted } from 'vue'
+import { ref, provide, onMounted, onUnmounted, watch } from 'vue'
 import { systemApi } from '@/api/system'
 import Header from '@/components/layout/Header.vue'
+import { wsService } from '@/services/websocket'
 
 const systemSettings = ref({
   logo: '/logo.svg',
   title: '自媒体视频脚本Ai自动生成系统'
 })
 
+const wsConnected = ref(false)
+
 // 提供给所有子组件使用
 provide('systemSettings', systemSettings)
+provide('wsConnected', wsConnected)
 
 // 获取系统设置
 const fetchSystemSettings = async () => {
@@ -32,24 +54,52 @@ const fetchSystemSettings = async () => {
     }
   } catch (error) {
     console.error('获取系统设置失败:', error)
-    // 使用默认值
-    systemSettings.value = {
-      logo: '/logo.svg',
-      title: '自媒体视频脚本Ai自动生成系统'
-    }
   }
 }
 
-// 添加更新系统设置的方法
-const updateSystemSettings = (newSettings) => {
-  systemSettings.value = { ...systemSettings.value, ...newSettings }
+// 重新连接WebSocket
+const reconnectWebSocket = async () => {
+  try {
+    await wsService.connect()
+  } catch (error) {
+    console.error('WebSocket reconnection failed:', error)
+  }
 }
 
-// 提供更新方法给子组件
-provide('updateSystemSettings', updateSystemSettings)
+// 监听WebSocket连接状态
+watch(() => wsService.connected, (connected) => {
+  wsConnected.value = connected
+  console.log('WebSocket connection status:', connected)
+})
 
-onMounted(() => {
-  fetchSystemSettings()
+onMounted(async () => {
+  try {
+    // 检查API连接
+    await systemApi.checkDbStatus()
+    console.log('API connection successful')
+    
+    // 初始化WebSocket连接
+    await wsService.connect()
+    wsConnected.value = true
+  } catch (error) {
+    console.error('Connection error:', error)
+    wsConnected.value = false
+  }
+
+  // 获取系统设置
+  await fetchSystemSettings()
+  
+  // 监听页面可见性变化
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !wsService.connected) {
+      reconnectWebSocket()
+    }
+  })
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange')
 })
 </script>
 
@@ -72,5 +122,18 @@ html, body {
 
 .v-application {
   background-color: var(--background-color) !important;
+}
+
+/* 添加连接状态栏样式 */
+.v-system-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
 }
 </style>

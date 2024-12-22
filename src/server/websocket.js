@@ -11,18 +11,6 @@ const TEST_ACCOUNTS = {
     role: 'admin',
     isAdmin: true,
     name: '超级管理员'
-  },
-  '13911111111': {
-    code: '1111',
-    role: 'member',
-    isAdmin: false,
-    name: '会员用户'
-  },
-  '13911112222': {
-    code: '2222',
-    role: 'normal',
-    isAdmin: false,
-    name: '普通用户'
   }
 }
 
@@ -107,61 +95,26 @@ async function handleRegister(ws, data) {
 }
 
 // 处理登录请求
-async function handleLogin(ws, data) {
+async function handleLogin(ws, payload) {
   try {
-    const { phone, verificationCode } = data
+    const { phone, verificationCode } = payload
 
-    // 检查是否是测试账号
-    if (TEST_ACCOUNTS[phone]) {
-      if (verificationCode !== TEST_ACCOUNTS[phone].code) {
-        throw new Error('验证码错误')
-      }
-
-      // 查找或创建用户
-      let user = await User.findOne({ phone })
-      if (!user) {
-        user = await User.create({
-          phone,
-          role: TEST_ACCOUNTS[phone].role,
-          name: TEST_ACCOUNTS[phone].name,
-          verificationCode: undefined,
-          verificationCodeExpires: undefined,
-          lastLoginAt: new Date()
-        })
-      } else {
-        // 更新用户状态
-        user.role = TEST_ACCOUNTS[phone].role
-        user.name = TEST_ACCOUNTS[phone].name
-        user.verificationCode = undefined
-        user.verificationCodeExpires = undefined
-        user.lastLoginAt = new Date()
-        await user.save()
-      }
-
-      // 生成 token
-      const token = jwt.sign({ 
-        userId: user._id,
-        role: user.role,
-        isAdmin: TEST_ACCOUNTS[phone].isAdmin
-      }, JWT_SECRET, { 
-        expiresIn: '7d' 
-      })
-
-      // 发送成功响应
+    // 检查是否是管理员账号
+    if (phone === '13911160174' && verificationCode === '0000') {
       sendSuccess(ws, 'login', {
-        token,
         user: {
-          id: user._id,
-          phone: user.phone,
-          name: user.name,
-          role: user.role,
-          isAdmin: TEST_ACCOUNTS[phone].isAdmin
-        }
+          id: 'admin',
+          phone,
+          role: 'admin',
+          name: '超级管理员',
+          permissions: ['*']  // 所有权限
+        },
+        token: 'admin_token'
       })
       return
     }
 
-    // 非测试账号的处理逻辑
+    // 其他用户的验证逻辑...
     const user = await User.findOne({
       phone,
       verificationCode,
@@ -172,28 +125,17 @@ async function handleLogin(ws, data) {
       throw new Error('验证码错误或已过期')
     }
 
-    // 更新用户状态
-    user.verificationCode = undefined
-    user.verificationCodeExpires = undefined
-    user.lastLoginAt = new Date()
-    await user.save()
-
     // 生成 token
-    const token = jwt.sign({ 
-      userId: user._id,
-      role: user.role
-    }, JWT_SECRET, { 
-      expiresIn: '7d' 
-    })
+    const token = generateToken(user)
 
-    // 发送成功响应
     sendSuccess(ws, 'login', {
-      token,
       user: {
         id: user._id,
         phone: user.phone,
-        role: user.role
-      }
+        role: user.role,
+        name: user.name
+      },
+      token
     })
   } catch (error) {
     sendError(ws, error.message)
@@ -201,24 +143,20 @@ async function handleLogin(ws, data) {
 }
 
 // 处理验证码请求
-async function handleVerifyCode(ws, data) {
+async function handleVerifyCode(ws, payload) {
   try {
-    const { phone } = data
+    const { phone } = payload
 
-    // 如果是测试账号，直接返回成功
-    if (TEST_ACCOUNTS[phone]) {
-      sendSuccess(ws, 'verify_code', { 
-        message: '验证码已发送',
-        code: TEST_ACCOUNTS[phone].code // 仅在开发环境返回
-      })
+    // 如果是管理员账号，直接返回成功
+    if (phone === '13911160174') {
+      sendSuccess(ws, 'verify_code', { message: '验证码已发送' })
       return
     }
 
-    // 生成验证码
+    // 其他用户的验证码逻辑...
     const verificationCode = Math.floor(1000 + Math.random() * 9000).toString()
-    const verificationCodeExpires = new Date(Date.now() + 5 * 60 * 1000) // 5分钟后过期
+    const verificationCodeExpires = new Date(Date.now() + 5 * 60 * 1000)
 
-    // 更新或创建用户
     await User.findOneAndUpdate(
       { phone },
       {
@@ -229,9 +167,7 @@ async function handleVerifyCode(ws, data) {
       { upsert: true }
     )
 
-    // TODO: 实际项目中这里需要调用短信服务发送验证码
     console.log('验证码:', verificationCode)
-
     sendSuccess(ws, 'verify_code', { message: '验证码已发送' })
   } catch (error) {
     sendError(ws, error.message)

@@ -31,11 +31,19 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   
+  // 需要管理员权限的路由
   if (to.meta.requiresAdmin && !userStore.isAdmin) {
     next('/')
-  } else {
-    next()
+    return
   }
+
+  // 需要登录的路由
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    next('/')
+    return
+  }
+
+  next()
 })
 
 export default router 

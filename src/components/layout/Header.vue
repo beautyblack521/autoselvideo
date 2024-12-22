@@ -15,11 +15,13 @@
     <v-spacer></v-spacer>
 
     <div class="d-flex align-center">
+      <!-- 未登录状态 -->
       <template v-if="!userStore.isLoggedIn">
         <v-btn
           variant="text"
           class="mr-2"
           @click="showLoginDialog = true"
+          :loading="isLoading"
         >
           <v-icon left>mdi-login</v-icon>
           登录
@@ -29,12 +31,14 @@
           variant="outlined"
           color="primary"
           @click="showRegisterDialog = true"
+          :loading="isLoading"
         >
           <v-icon left>mdi-account-plus</v-icon>
           注册
         </v-btn>
       </template>
       
+      <!-- 已登录状态 -->
       <template v-else>
         <v-btn
           v-if="!isHomePage"
@@ -44,60 +48,56 @@
           @click="goToHome"
         >
           <v-icon left>mdi-home</v-icon>
-          返回首页
+          首页
         </v-btn>
 
-        <v-menu v-if="userStore.isAdmin" location="bottom end" offset="5">
+        <v-menu location="bottom end">
           <template v-slot:activator="{ props }">
             <v-btn
               color="primary"
-              variant="tonal"
-              class="mr-2"
+              variant="text"
               v-bind="props"
             >
-              <v-icon left>mdi-crown</v-icon>
-              管理员
+              <v-icon left>mdi-account-circle</v-icon>
+              {{ userStore.user?.name || '用户' }}
               <v-icon right>mdi-chevron-down</v-icon>
             </v-btn>
           </template>
 
-          <v-list width="200" elevation="3" rounded="lg">
+          <v-list>
             <v-list-item
-              @click="navigateToProfile"
-              prepend-icon="mdi-account-circle"
-            >
-              <v-list-item-title>个人中心</v-list-item-title>
-            </v-list-item>
-
-            <v-divider class="my-2"></v-divider>
-
-            <v-list-item
-              @click="navigateToSystem"
+              v-if="userStore.isAdmin"
               prepend-icon="mdi-cog"
-            >
-              <v-list-item-title>系统管理</v-list-item-title>
-            </v-list-item>
+              title="系统设置"
+              @click="goToSystemSettings"
+            ></v-list-item>
+            
+            <v-list-item
+              prepend-icon="mdi-account"
+              title="个人中心"
+              @click="goToProfile"
+            ></v-list-item>
+            
+            <v-divider></v-divider>
+            
+            <v-list-item
+              prepend-icon="mdi-logout"
+              title="退出登录"
+              @click="handleLogout"
+            ></v-list-item>
           </v-list>
         </v-menu>
-        
-        <v-btn
-          variant="text"
-          @click="handleLogout"
-        >
-          <v-icon left>mdi-logout</v-icon>
-          退出
-        </v-btn>
       </template>
     </div>
 
     <!-- 登录对话框 -->
-    <login-dialog
+    <LoginDialog
       v-model="showLoginDialog"
       @login-success="handleLoginSuccess"
     />
 
     <!-- 注册对话框 -->
-    <register-dialog
+    <RegisterDialog
       v-model="showRegisterDialog"
       @register-success="handleRegisterSuccess"
     />
@@ -108,48 +108,54 @@
 import { ref, computed, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import LoginDialog from '../LoginDialog.vue'
-import RegisterDialog from '../RegisterDialog.vue'
+import LoginDialog from '@/components/LoginDialog.vue'
+import RegisterDialog from '@/components/RegisterDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const systemSettings = inject('systemSettings')
+
 const showLoginDialog = ref(false)
 const showRegisterDialog = ref(false)
+const isLoading = ref(false)
 
-// 判断是否在首页
+// 是否在首页
 const isHomePage = computed(() => {
-  return route.name === 'Home'
+  return route.path === '/'
 })
 
-// 返回首页
-const goToHome = () => {
-  router.push('/')
-}
-
-const navigateToProfile = () => {
-  router.push('/admin/profile')
-}
-
-// 添加系统管理导航方法
-const navigateToSystem = () => {
-  router.push('/admin/system')
-}
-
+// 处理登录成功
 const handleLoginSuccess = () => {
   showLoginDialog.value = false
 }
 
+// 处理注册成功
 const handleRegisterSuccess = () => {
   showRegisterDialog.value = false
 }
 
+// 处理退出登录
 const handleLogout = () => {
   userStore.logout()
   if (!isHomePage.value) {
     router.push('/')
   }
+}
+
+// 跳转到首页
+const goToHome = () => {
+  router.push('/')
+}
+
+// 跳转到个人中心
+const goToProfile = () => {
+  router.push('/profile')
+}
+
+// 跳转到系统设置
+const goToSystemSettings = () => {
+  router.push('/admin/system')
 }
 
 // 处理logo加载失败
